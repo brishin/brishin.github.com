@@ -148,7 +148,7 @@ task :css do
       if installed? "lessc"
         css_name = fname.sub(/\.less/, ".css")
         puts "---> Compiling #{fname} to #{css_name}"
-        `lessc #{f} > #{CSS_BIN}/#{css_name}`
+        `/usr/local/lib/node_modules/less/bin/lessc #{f} > #{CSS_BIN}/#{css_name}`
       else
         fail "You need less! Install it by running: `npm install -g less`"
       end
