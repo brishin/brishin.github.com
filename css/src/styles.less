@@ -12,7 +12,8 @@
 @import "../lib/reset.less";
 
 // Core variables and mixins
-@import "../lib/variables.less"; // Modify this for custom colors, font-sizes, etc
+// @import "../lib/variables.less";
+@import "../lib/theme/variables.less"; // Custom theme.
 @import "../lib/html5boilerplate.less"; // Include HTML5 Boilerplate reset styles
 @import "../lib/mixins.less";
 
@@ -61,3 +62,6 @@
 
 // Utility classes
 @import "../lib/utilities.less"; // Has to be last to override when necessary
+
+// Theme
+@import "../lib/theme/bootswatch.less"

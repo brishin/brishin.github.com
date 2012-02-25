@@ -20,6 +20,17 @@ task :default do
   puts "==== DONE ===="
 end
 
+desc 'Pushes everything to github'
+task :gh do
+  puts "Pushing to github."
+  system "git add ."
+  system "git add -u"
+  puts "\n## Commiting: Site updated at #{Time.now.utc}"
+  message = "Site updated at #{Time.now.utc}"
+  system "git commit -m \"#{message}\""
+  system "git push origin master --force"
+end
+
 task :watch do
   begin
     require 'watchr'
