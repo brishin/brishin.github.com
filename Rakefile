@@ -17,6 +17,7 @@ task :default do
   Rake::Task['js'].invoke
   Rake::Task['minify'].invoke
   Rake::Task['css'].invoke
+  Rake::Task['gh'].invoke
   puts "==== DONE ===="
 end
 
