@@ -4298,3 +4298,6 @@ pre.prettyprint,
 .cNav ul {
   margin: 0;
 }
+.social li {
+  display: inline;
+}
