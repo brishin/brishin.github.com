@@ -1,171 +1,308 @@
-JS_SRC = "js/src"
-JS_LIB = "js/lib"
-JS_BIN = "js/bin"
+require "rubygems"
+require 'rake'
+require 'yaml'
+require 'time'
 
-CSS_SRC = "css/src"
-CSS_LIB = "css/lib"
-CSS_BIN = "css/bin"
+SOURCE = "."
+CONFIG = {
+  'version' => "0.2.13",
+  'themes' => File.join(SOURCE, "_includes", "themes"),
+  'layouts' => File.join(SOURCE, "_layouts"),
+  'posts' => File.join(SOURCE, "_posts"),
+  'post_ext' => "md",
+  'theme_package_version' => "0.1.0"
+}
 
-# Compiles scripts
-def installed?(program)
-  cmd = "which #{program}"
-  File.executable?(`#{cmd}`.strip)
-end
+# Path configuration helper
+module JB
+  class Path
+    SOURCE = "."
+    Paths = {
+      :layouts => "_layouts",
+      :themes => "_includes/themes",
+      :theme_assets => "assets/themes",
+      :theme_packages => "_theme_packages",
+      :posts => "_posts"
+    }
+    
+    def self.base
+      SOURCE
+    end
 
-desc 'Runs all javascript and css related jobs'
-task :default do
-  Rake::Task['js'].invoke
-  Rake::Task['minify'].invoke
-  Rake::Task['css'].invoke
-  Rake::Task['gh'].invoke
-  puts "==== DONE ===="
-end
+    # build a path relative to configured path settings.
+    def self.build(path, opts = {})
+      opts[:root] ||= SOURCE
+      path = "#{opts[:root]}/#{Paths[path.to_sym]}/#{opts[:node]}".split("/")
+      path.compact!
+      File.__send__ :join, path
+    end
+  
+  end #Path
+end #JB
 
-desc 'Pushes everything to github'
-task :gh do
-  puts "Pushing to github."
-  system "git add ."
-  system "git add -u"
-  puts "\n## Commiting: Site updated at #{Time.now.utc}"
-  message = "Site updated at #{Time.now.utc}"
-  system "git commit -m \"#{message}\""
-  system "git push origin master --force"
-end
-
-task :watch do
+# Usage: rake post title="A Title" [date="2012-02-09"]
+desc "Begin a new post in #{CONFIG['posts']}"
+task :post do
+  abort("rake aborted: '#{CONFIG['posts']}' directory not found.") unless FileTest.directory?(CONFIG['posts'])
+  title = ENV["title"] || "new-post"
+  slug = title.downcase.strip.gsub(' ', '-').gsub(/[^\w-]/, '')
   begin
-    require 'watchr'
-    script = Watchr::Script.new
-    script.watch('(js|css)/(src|lib)/.*') { system 'rake' }
-    contrl = Watchr::Controller.new(script, Watchr.handler.new)
-    contrl.run
-  rescue LoadError
-    fail "You need watchr! Install it by running `gem install watchr`"
+    date = (ENV['date'] ? Time.parse(ENV['date']) : Time.now).strftime('%Y-%m-%d')
+  rescue Exception => e
+    puts "Error - date format must be YYYY-MM-DD, please check you typed it correctly!"
+    exit -1
   end
-end
-
-desc 'Compiles, and concatenates javascript and coffeescript'
-task :js do
-  if FileList["#{JS_SRC}/*.js"].any?
-    puts "---> Copying over raw javascript files"
-    `cp #{JS_SRC}/*.js #{JS_BIN}/`
+  filename = File.join(CONFIG['posts'], "#{date}-#{slug}.#{CONFIG['post_ext']}")
+  if File.exist?(filename)
+    abort("rake aborted!") if ask("#{filename} already exists. Do you want to overwrite?", ['y', 'n']) == 'n'
   end
+  
+  puts "Creating new post: #{filename}"
+  open(filename, 'w') do |post|
+    post.puts "---"
+    post.puts "layout: post"
+    post.puts "title: \"#{title.gsub(/-/,' ')}\""
+    post.puts 'description: ""'
+    post.puts "category: "
+    post.puts "tags: []"
+    post.puts "---"
+    post.puts "{% include JB/setup %}"
+  end
+end # task :post
 
-  Dir["#{JS_SRC}/*/"].each do |d|
-    dname = d.strip.split("/")[-1]
-    line_num = 0
-    num_files = FileList["#{d}*.js"].size
+# Usage: rake page name="about.html"
+# You can also specify a sub-directory path.
+# If you don't specify a file extention we create an index.html at the path specified
+desc "Create a new page."
+task :page do
+  name = ENV["name"] || "new-page.md"
+  filename = File.join(SOURCE, "#{name}")
+  filename = File.join(filename, "index.html") if File.extname(filename) == ""
+  title = File.basename(filename, File.extname(filename)).gsub(/[\W\_]/, " ").gsub(/\b\w/){$&.upcase}
+  if File.exist?(filename)
+    abort("rake aborted!") if ask("#{filename} already exists. Do you want to overwrite?", ['y', 'n']) == 'n'
+  end
+  
+  mkdir_p File.dirname(filename)
+  puts "Creating new page: #{filename}"
+  open(filename, 'w') do |post|
+    post.puts "---"
+    post.puts "layout: page"
+    post.puts "title: \"#{title}\""
+    post.puts 'description: ""'
+    post.puts "---"
+    post.puts "{% include JB/setup %}"
+  end
+end # task :page
 
-    if File.exist? "#{d}ORDERING"
-      puts "---> Concatenating all javascript files inside of #{dname} to #{dname}.js in the order found in the 'ORDERING' file"
-      file = File.new(FileList["#{d}ORDERING"][0], 'r')
-      file.each_line("\n") do |l|
-        l = l.strip
-        if l != ""
-          if line_num == 0
-            `cat #{d}#{l} > #{JS_BIN}/#{dname}.js`
-          else
-            `cat #{d}#{l} >> #{JS_BIN}/#{dname}.js`
-          end
-          line_num += 1
-        end
+desc "Launch preview environment"
+task :preview do
+  system "jekyll --auto --server"
+end # task :preview
+
+# Public: Alias - Maintains backwards compatability for theme switching.
+task :switch_theme => "theme:switch"
+
+namespace :theme do
+  
+  # Public: Switch from one theme to another for your blog.
+  #
+  # name - String, Required. name of the theme you want to switch to.
+  #        The the theme must be installed into your JB framework.
+  #
+  # Examples
+  #
+  #   rake theme:switch name="the-program"
+  #
+  # Returns Success/failure messages.
+  desc "Switch between Jekyll-bootstrap themes."
+  task :switch do
+    theme_name = ENV["name"].to_s
+    theme_path = File.join(CONFIG['themes'], theme_name)
+    settings_file = File.join(theme_path, "settings.yml")
+    non_layout_files = ["settings.yml"]
+
+    abort("rake aborted: name cannot be blank") if theme_name.empty?
+    abort("rake aborted: '#{theme_path}' directory not found.") unless FileTest.directory?(theme_path)
+    abort("rake aborted: '#{CONFIG['layouts']}' directory not found.") unless FileTest.directory?(CONFIG['layouts'])
+
+    Dir.glob("#{theme_path}/*") do |filename|
+      next if non_layout_files.include?(File.basename(filename).downcase)
+      puts "Generating '#{theme_name}' layout: #{File.basename(filename)}"
+
+      open(File.join(CONFIG['layouts'], File.basename(filename)), 'w') do |page|
+        if File.basename(filename, ".html").downcase == "default"
+          page.puts "---"
+          page.puts File.read(settings_file) if File.exist?(settings_file)
+          page.puts "---"
+        else
+          page.puts "---"
+          page.puts "layout: default"
+          page.puts "---"
+        end 
+        page.puts "{% include JB/setup %}"
+        page.puts "{% include themes/#{theme_name}/#{File.basename(filename)} %}" 
       end
-      if num_files != line_num
-        $stderr.puts "XXX> WARNING! The number of files in #{dname} does not match the number in 'ORDERING'. You may be forgetting to concatenate some."
-      end
+    end
+    
+    puts "=> Theme successfully switched!"
+    puts "=> Reload your web-page to check it out =)"
+  end # task :switch
+  
+  # Public: Install a theme using the theme packager.
+  # Version 0.1.0 simple 1:1 file matching.
+  #
+  # git  - String, Optional path to the git repository of the theme to be installed.
+  # name - String, Optional name of the theme you want to install.
+  #        Passing name requires that the theme package already exist.
+  #
+  # Examples
+  #
+  #   rake theme:install git="https://github.com/jekyllbootstrap/theme-twitter.git"
+  #   rake theme:install name="cool-theme"
+  #
+  # Returns Success/failure messages.
+  desc "Install theme"
+  task :install do
+    if ENV["git"]
+      manifest = theme_from_git_url(ENV["git"])
+      name = manifest["name"]
     else
-      if FileList["#{d}*.js"].any?
-        puts "---> Concatenating all javascript files inside of #{dname} to #{dname}.js"
-        `cat #{d}*.js > #{JS_BIN}/#{dname}.js`
-      end
+      name = ENV["name"].to_s.downcase
     end
-  end
 
-  if FileList["#{JS_SRC}/*.coffee"].any?
-    if installed? "coffee"
-      puts "---> Compiling individual coffeescript files"
-      `coffee -c -o #{JS_BIN}/ #{JS_SRC}/*.coffee`
-    else
-      fail "You need coffeescript! Install it by running: `npm install -g coffee-script`"
-    end
-  end
-
-  Dir["#{JS_SRC}/*/"].each do |d|
-    if FileList["#{d}*.coffee"].any?
-      if installed? "coffee"
-        dname = d.strip.split("/")[-1]
-        puts "---> Concatenating all coffeescript files inside of #{dname} then compiling to #{dname}.js"
-        `coffee --join #{JS_BIN}/#{dname}.coffee --compile #{d}*.coffee`
+    packaged_theme_path = JB::Path.build(:theme_packages, :node => name)
+    
+    abort("rake aborted!
+      => ERROR: 'name' cannot be blank") if name.empty?
+    abort("rake aborted! 
+      => ERROR: '#{packaged_theme_path}' directory not found.
+      => Installable themes can be added via git. You can find some here: http://github.com/jekyllbootstrap
+      => To download+install run: `rake theme:install git='[PUBLIC-CLONE-URL]'`
+      => example : rake theme:install git='git@github.com:jekyllbootstrap/theme-the-program.git'
+    ") unless FileTest.directory?(packaged_theme_path)
+    
+    manifest = verify_manifest(packaged_theme_path)
+    
+    # Get relative paths to packaged theme files
+    # Exclude directories as they'll be recursively created. Exclude meta-data files.
+    packaged_theme_files = []
+    FileUtils.cd(packaged_theme_path) {
+      Dir.glob("**/*.*") { |f| 
+        next if ( FileTest.directory?(f) || f =~ /^(manifest|readme|packager)/i )
+        packaged_theme_files << f 
+      }
+    }
+    
+    # Mirror each file into the framework making sure to prompt if already exists.
+    packaged_theme_files.each do |filename|
+      file_install_path = File.join(JB::Path.base, filename)
+      if File.exist? file_install_path
+        next if ask("#{file_install_path} already exists. Do you want to overwrite?", ['y', 'n']) == 'n'
       else
-        fail "You need coffeescript! Install it by running: `npm install -g coffee-script`"
+        mkdir_p File.dirname(file_install_path)
+        cp_r File.join(packaged_theme_path, filename), file_install_path
       end
     end
+    
+    puts "=> #{name} theme has been installed!"
+    puts "=> ---"
+    if ask("=> Want to switch themes now?", ['y', 'n']) == 'y'
+      system("rake switch_theme name='#{name}'")
+    end
   end
+
+  # Public: Package a theme using the theme packager.
+  # The theme must be structured using valid JB API.
+  # In other words packaging is essentially the reverse of installing.
+  #
+  # name - String, Required name of the theme you want to package.
+  #        
+  # Examples
+  #
+  #   rake theme:package name="twitter"
+  #
+  # Returns Success/failure messages.
+  desc "Package theme"
+  task :package do
+    name = ENV["name"].to_s.downcase
+    theme_path = JB::Path.build(:themes, :node => name)
+    asset_path = JB::Path.build(:theme_assets, :node => name)
+
+    abort("rake aborted: name cannot be blank") if name.empty?
+    abort("rake aborted: '#{theme_path}' directory not found.") unless FileTest.directory?(theme_path)
+    abort("rake aborted: '#{asset_path}' directory not found.") unless FileTest.directory?(asset_path)
+    
+    ## Mirror theme's template directory (_includes)
+    packaged_theme_path = JB::Path.build(:themes, :root => JB::Path.build(:theme_packages, :node => name))
+    mkdir_p packaged_theme_path
+    cp_r theme_path, packaged_theme_path
+    
+    ## Mirror theme's asset directory
+    packaged_theme_assets_path = JB::Path.build(:theme_assets, :root => JB::Path.build(:theme_packages, :node => name))
+    mkdir_p packaged_theme_assets_path
+    cp_r asset_path, packaged_theme_assets_path
+
+    ## Log packager version
+    packager = {"packager" => {"version" => CONFIG["theme_package_version"].to_s } }
+    open(JB::Path.build(:theme_packages, :node => "#{name}/packager.yml"), "w") do |page|
+      page.puts packager.to_yaml
+    end
+    
+    puts "=> '#{name}' theme is packaged and available at: #{JB::Path.build(:theme_packages, :node => name)}"
+  end
+  
+end # end namespace :theme
+
+# Internal: Download and process a theme from a git url.
+# Notice we don't know the name of the theme until we look it up in the manifest.
+# So we'll have to change the folder name once we get the name.
+#
+# url - String, Required url to git repository.
+#        
+# Returns theme manifest hash
+def theme_from_git_url(url)
+  tmp_path = JB::Path.build(:theme_packages, :node => "_tmp")
+  abort("rake aborted: system call to git clone failed") if !system("git clone #{url} #{tmp_path}")
+  manifest = verify_manifest(tmp_path)
+  new_path = JB::Path.build(:theme_packages, :node => manifest["name"])
+  if File.exist?(new_path) && ask("=> #{new_path} theme package already exists. Override?", ['y', 'n']) == 'n'
+    remove_dir(tmp_path)
+    abort("rake aborted: '#{manifest["name"]}' already exists as theme package.")
+  end
+
+  remove_dir(new_path) if File.exist?(new_path)
+  mv(tmp_path, new_path)
+  manifest
 end
 
-desc 'Minify all javascript files'
-task :minify do
-  puts "---> Minifying all javascript files"
-  FileList["#{JS_BIN}/*.js"].each do |f|
-    fname = f.strip.split("/")[-1]
-
-    # Don't minify things that are already minified!
-    if fname.split(".")[-2] != "min"
-      if installed? "uglifyjs"
-        min_name = fname.insert(fname.rindex(".js"), ".min")
-        puts "     Minifying #{fname} to #{min_name}"
-        `uglifyjs -o #{JS_BIN}/#{min_name} #{f}`
-      else
-        fail "You need uglifyjs! Install it by running: `npm install -g uglify-js`"
-      end
-    end
-  end
+# Internal: Process theme package manifest file.
+#
+# theme_path - String, Required. File path to theme package.
+#        
+# Returns theme manifest hash
+def verify_manifest(theme_path)
+  manifest_path = File.join(theme_path, "manifest.yml")
+  manifest_file = File.open( manifest_path )
+  abort("rake aborted: repo must contain valid manifest.yml") unless File.exist? manifest_file
+  manifest = YAML.load( manifest_file )
+  manifest_file.close
+  manifest
 end
 
-desc 'Compiles, concatenates, and minifies css, less, and sass'
-task :css do
-  if FileList["#{CSS_SRC}/*.css"].any?
-    puts "---> Copying over raw css files"
-    `cp #{CSS_SRC}/*.css #{CSS_BIN}/`
+def ask(message, valid_options)
+  if valid_options
+    answer = get_stdin("#{message} #{valid_options.to_s.gsub(/"/, '').gsub(/, /,'/')} ") while !valid_options.include?(answer)
+  else
+    answer = get_stdin(message)
   end
-
-  Dir["#{CSS_SRC}/*/"].each do |d|
-    if FileList["#{d}*.css"].any?
-      dname = d.strip.split("/")[-1]
-      puts "---> Concatenating all css files inside of #{dname} to #{dname}.css"
-      `cat #{d}*.css > #{CSS_BIN}/#{dname}.css`
-    end
-    if FileList["#{d}*.less"].any?
-      fail "You should not concatenate less files. Use the @import directive instead and put extra less files in the 'lib' directory"
-    end
-    if FileList["#{d}*.scss"].any?
-      fail "You should not concatenate scss files. Use the @import directive instead and put extra scss files in the 'lib' directory"
-    end
-  end
-
-  if FileList["#{CSS_SRC}/*.less"].any?
-    FileList["#{CSS_SRC}/*.less"].each do |f|
-      fname = f.strip.split("/")[-1]
-      if installed? "lessc"
-        css_name = fname.sub(/\.less/, ".css")
-        puts "---> Compiling #{fname} to #{css_name}"
-        `/usr/local/lib/node_modules/less/bin/lessc #{f} > #{CSS_BIN}/#{css_name}`
-      else
-        fail "You need less! Install it by running: `npm install -g less`"
-      end
-    end
-  end
-
-  if FileList["#{CSS_SRC}/*.scss"].any?
-    FileList["#{CSS_SRC}/*.scss"].each do |f|
-      fname = f.strip.split("/")[-1]
-      if installed? "sass"
-        css_name = fname.sub(/\.scss/, ".css")
-        puts "---> Compiling #{fname} to #{css_name}"
-        `sass #{f} > #{CSS_BIN}/#{css_name}`
-      else
-        fail "You need sass! Install it by running: `gem install sass`"
-      end
-    end
-  end
+  answer
 end
+
+def get_stdin(message)
+  print message
+  STDIN.gets.chomp
+end
+
+#Load custom rake scripts
+Dir['_rake/*.rake'].each { |r| load r }
