@@ -234,9 +234,17 @@ h1.header {
 	margin-top: 0;
 }
 
-
 h1.header, a.header, a.name, header a{
 	color: #fff;
+  display: block;
+}
+
+header a:hover {
+  text-decoration: none;
+}
+
+span.header {
+  margin-left: 3px;
 }
 
 a.header {
@@ -254,7 +262,7 @@ header ul {
 
 header li {
 	list-style-type: none;
-  width:132px;
+  width:110px;
   height:15px;
 	margin-bottom: 12px;
 	line-height: 1em;
