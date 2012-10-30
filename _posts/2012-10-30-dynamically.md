@@ -8,7 +8,7 @@ tags: ["AngularJS"]
 
 {% include JB/setup %}
 
-One of the pain points that I discovered while working at my tech internship this year working with [AngularJS](http://angularjs.org/) was that, when delploying AngularJS applications to third party sites where cross-site requests are disallowed to our servers hosting the MVC code.
+One of the pain points that I discovered while working at my tech internship this year working with [AngularJS](http://angularjs.org/) was that, when deploying AngularJS applications to third party sites where cross-site requests are disallowed to our servers hosting the MVC code.
 
 The solution that I came up with was to dynamically download the templates when the controller code runs using jQuery and JSONP.
 
@@ -27,3 +27,7 @@ IndexCtrl = ($scope, $compile) ->
 {% endhighlight %}
 
 This requires pregenerated JSON that is appropriate for the JSONP format and is served as a static file by nginx.
+
+{% highlight coffeescript}$compile{% endhighlight %} will process the text based template and attach the appropriate listeners.
+
+{% highlight coffeescript}$scope.$apply(){% endhighlight %} is necessary to trigger an apply cycle to update the DOM with the javascript.
