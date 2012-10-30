@@ -28,6 +28,6 @@ IndexCtrl = ($scope, $compile) ->
 
 This requires pregenerated JSON that is appropriate for the JSONP format and is served as a static file by nginx.
 
-{% highlight coffeescript}$compile{% endhighlight %} will process the text based template and attach the appropriate listeners.
+$compile will process the text based template and attach the appropriate listeners.
 
-{% highlight coffeescript}$scope.$apply(){% endhighlight %} is necessary to trigger an apply cycle to update the DOM with the javascript.
+$scope.$apply() is necessary to trigger an apply cycle to update the DOM with the javascript.
